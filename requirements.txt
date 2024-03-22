@@ -1,0 +1,13 @@
+torch
+torchvision
+torchaudio
+lightning # this is for making training scripts cleaner,
+wandb # this is for logging.
+pandas
+numpy
+scipy
+scikit-learn
+matplotlib
+seaborn
+nlb-tools # this is for neural latent.
+dandi>=0.13.0 # this is for data.
