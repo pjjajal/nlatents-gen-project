@@ -35,7 +35,13 @@ dandi download DANDI:000128/0.220113.0400 # this downloads the MC_MAZE dataset, 
 ```
 
 ### Processing Data
-The data used 
+The data is processed using the `create_datasets.py` script in the `datasets` folder. 
+To generate the data for the `MC_MAZE` dataset use the following command (from the repository root directory):
+```sh
+# datasets flag controls which dataset to process
+# bin_width flag controls how to resample the data. (5 = 5ms bin width)
+python -m datasets.create_datasets --datasets mcmaze --bin_width=5
+```
 
 
 ## Training Jobs

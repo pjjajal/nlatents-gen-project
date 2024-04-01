@@ -3,7 +3,7 @@ import logging
 import os
 
 import pandas as pd
-from nlb_tools.make_tensors import make_eval_input_tensors, make_train_input_tensors
+from nlb_tools.make_tensors import make_eval_input_tensors, make_train_input_tensors, make_eval_target_tensors
 from nlb_tools.nwb_interface import NWBDataset
 
 MCMAZE_PATH = "data/000128/sub-Jenkins"
@@ -39,12 +39,27 @@ def create_mcmaze_data(bin_width=1):
 
     # Save val data.
     val_save_path = f"datasets/mcmaze_val_bw{bin_width}.h5"
+    val_dict = make_eval_input_tensors(
+        dataset=dataset,
+        dataset_name="mc_maze",
+        trial_split="val",
+        save_path=val_save_path,
+    )
+    # This is weird but it adds the behavior to the val data.
+    # I am just using the same function as the train data but grabbing
+    # the val data.
     val_dict = make_train_input_tensors(
         dataset=dataset,
         dataset_name="mc_maze",
         trial_split="val",
         save_path=val_save_path,
         include_behavior=True,
+    )
+    val_save_path = f"datasets/mcmaze_val_target_bw{bin_width}.h5"
+    val_target = make_eval_target_tensors(
+        dataset=dataset,
+        dataset_name="mc_maze",
+        save_path=val_save_path,
     )
 
 
