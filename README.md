@@ -21,6 +21,9 @@ conda install ipykernel # use this if you will be looking at the notebooks.
 ## Repository Outline
 - `data`: this folder is where all downloaded data should be save. 
 - `dataset`: this folder contains the scripts for creating (processed) datasets used for training models, or, more generally, code related to the "data pipeline" (whatever that means).
+- `models`: this folder contains model implementations. 
+    - `baselines` contains all baseline models from Neural Latents.
+    - `ndt_mae` contains my transformer implementations. This is a mix of publicly available code and my code. Publicly available code has the copyright and source at the top of the file (I apologize if I've missed anything).
 
 ## Downloading Datasets
 Datasets should be downloaded to the `data` folder. The following snippet outlines how to do this:
@@ -45,3 +48,13 @@ python -m datasets.create_datasets --datasets mcmaze --bin_width=5
 
 
 ## Training Jobs
+
+## Results
+### MC_Maze Rate Predictions
+| Method               	| co-bps (higher better)	| vel R2 (higher better)	|
+|----------------------	|--------	|--------	|
+| Smoothing (baseline) 	| 0.2122 	| 0.616  	|
+| NDT (baseline)       	| 0.3597 	| 0.8897 	|
+| **My Method**        	|        	|        	|
+
+*Note: NDT values taken from EvalAI leaderboard.*
