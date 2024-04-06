@@ -9,5 +9,6 @@ scipy
 scikit-learn
 matplotlib
 seaborn
+omegaconf
 nlb-tools # this is for neural latent.
 dandi>=0.13.0 # this is for data.

@@ -18,8 +18,7 @@ class Attention(nn.Module):
         self.head_dim = dim // num_heads
         self.scale = self.head_dim**-0.5
 
-        self.q = nn.Linear(dim, dim, bias=qkv_bias)
-        self.kv = nn.Linear(dim, dim * 2, bias=qkv_bias)
+        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
 
         # Attn dropout
         self.attn_drop_prob = attn_drop
@@ -37,8 +36,9 @@ class Attention(nn.Module):
         )
 
         q, k, v = qkv[0] * self.scale, qkv[1], qkv[2]
-        x = F.scaled_dot_product_attention(q, k, v, self.attn_drop_prob, self.scale)
-
+        x = F.scaled_dot_product_attention(
+            q, k, v, dropout_p=self.attn_drop_prob, scale=self.scale
+        ).reshape(B, N, C)
         x = self.proj(x)
         x = self.proj_drop(x)
         return x

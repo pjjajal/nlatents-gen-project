@@ -12,7 +12,7 @@ class Embed(nn.Module):
     ) -> None:
         super().__init__()
         self.channel_kernel_size = channel_kernel_size
-        if channel_kernel_size is not None:
+        if channel_kernel_size:
             padding = (channels % channel_kernel_size) // 2
             self.proj = nn.Conv2d(
                 1,

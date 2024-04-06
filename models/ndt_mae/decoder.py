@@ -6,11 +6,10 @@ import torch.nn as nn
 from .layers import Block, Attention, Mlp, LayerScale, PositionalEncoding, Embed
 
 
-class Encoder(nn.Module):
+class Decoder(nn.Module):
     def __init__(
         self,
-        channels: int = 137,  # This is the default value for MC_MAZE.
-        channel_kernel_size: int = None,
+        input_dim: int = 768, 
         embed_dim=768,
         depth=12,
         num_heads=12,
@@ -20,7 +19,6 @@ class Encoder(nn.Module):
         proj_bias=True,
         proj_drop=0.0,
         attn_drop=0.0,
-        pos_drop=0.0,  # positional encoding dropout
         init_values=None,  # for layerscale: None or 0 => no layerscale
         *args,
         **kwargs
@@ -30,13 +28,10 @@ class Encoder(nn.Module):
         self.depth = depth
         self.num_heads = num_heads
 
+        self.mask_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        self.embed = nn.Linear(input_dim, embed_dim)
+
         norm_layer = partial(nn.LayerNorm, eps=1e-6)
-        self.embed = Embed(
-            channels,
-            embed_dim,
-            channel_kernel_size,
-        )
-        self.pos_embed = PositionalEncoding(embed_dim, pos_drop)
         blocks = [
             Block(
                 embed_dim=embed_dim,
@@ -53,11 +48,14 @@ class Encoder(nn.Module):
             )
             for _ in range(depth)
         ]
-
         self.blocks = nn.ModuleList(blocks)
         self.norm = norm_layer(embed_dim)
 
+
+        # Initialize
+        torch.nn.init.normal_(self.mask_token, std=.02)
         self.apply(self._init_weights)
+
 
     # This was taken from the MAE repo.
     # Link: https://github.com/facebookresearch/mae/tree/main
@@ -71,51 +69,15 @@ class Encoder(nn.Module):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
-    # This is also taken from the MAE repo. 
-    def random_masking(self, x, mask_ratio):
-        """
-        Perform per-sample random masking by per-sample shuffling.
-        Per-sample shuffling is done by argsort random noise.
-        x: [N, L, D], sequence
-        """
-        if not self.training:
-            return x, None, None
-
-        N, L, D = x.shape  # batch, length, dim
-        len_keep = int(L * (1 - mask_ratio))
-        
-        noise = torch.rand(N, L, device=x.device)  # noise in [0, 1]
-        
-        # sort noise for each sample
-        ids_shuffle = torch.argsort(noise, dim=1)  # ascend: small is keep, large is remove
-        ids_restore = torch.argsort(ids_shuffle, dim=1)
-
-        # keep the first subset
-        ids_keep = ids_shuffle[:, :len_keep]
-        x_masked = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D))
-
-        # generate the binary mask: 0 is keep, 1 is remove
-        mask = torch.ones([N, L], device=x.device)
-        mask[:, :len_keep] = 0
-        # unshuffle to get the binary mask
-        mask = torch.gather(mask, dim=1, index=ids_restore)
-
-        return x_masked, mask, ids_restore
-
-
-    def forward(self, x , mask_ratio=0.0):
+    def forward(self, x, ids_restore):
         x = self.embed(x)
-        x = self.pos_embed(x)
 
-        x, mask, ids_restore = self.random_masking(x, mask_ratio)
+        # append mask tokens to sequence
+        mask_tokens = self.mask_token.repeat(x.shape[0], ids_restore.shape[1] + 1 - x.shape[1], 1)
+        x = torch.cat([x, mask_tokens], dim=1) 
+        x = torch.gather(x, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, x.shape[2]))  # unshuffle
 
         for block in self.blocks:
             x = block(x)
         x = self.norm(x)
-        return x, mask, ids_restore
-
-if __name__ == "__main__":
-    encoder = Encoder()
-    x = torch.randn(1, 10, 137)
-    x, mask, ids_restore = encoder(x, mask_ratio=0.1)
-    print(x.shape, mask.shape, ids_restore.shape)
+        return x
