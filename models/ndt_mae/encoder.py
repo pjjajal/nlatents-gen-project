@@ -78,8 +78,8 @@ class Encoder(nn.Module):
         Per-sample shuffling is done by argsort random noise.
         x: [N, L, D], sequence
         """
-        if not self.training:
-            return x, None, None
+        if not self.training or mask_ratio <= 0:
+            return x, None, None, None
 
         N, L, D = x.shape  # batch, length, dim
         len_keep = int(L * (1 - mask_ratio))
@@ -100,22 +100,21 @@ class Encoder(nn.Module):
         # unshuffle to get the binary mask
         mask = torch.gather(mask, dim=1, index=ids_restore)
 
-        return x_masked, mask, ids_restore
+        return x_masked, mask, ids_restore, ids_keep
 
 
     def forward(self, x , mask_ratio=0.0):
         x = self.embed(x)
         x = self.pos_embed(x)
-
-        x, mask, ids_restore = self.random_masking(x, mask_ratio)
-
+        x, mask, ids_restore, ids_keep = self.random_masking(x, mask_ratio)
+        
         for block in self.blocks:
             x = block(x)
         x = self.norm(x)
-        return x, mask, ids_restore
+        return x, mask, ids_restore, ids_keep
 
 if __name__ == "__main__":
     encoder = Encoder()
     x = torch.randn(1, 10, 137)
-    x, mask, ids_restore = encoder(x, mask_ratio=0.1)
-    print(x.shape, mask.shape, ids_restore.shape)
+    x, mask, ids_restore, ids_keep = encoder(x, mask_ratio=0.1)
+    print(x.shape, mask.shape, ids_restore.shape, ids_keep.shape)

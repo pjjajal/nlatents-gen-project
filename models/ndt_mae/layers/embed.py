@@ -35,13 +35,14 @@ class Embed(nn.Module):
             torch.Tensor: Output tensor of shape (batch_size, channel_patches, time, embed_dim) or (batch_size, time, embed_dim).
 
         """
-        if self.channel_kernel_size is not None:
+        if self.channel_kernel_size:
             x = x.unsqueeze(1)
-        x = self.proj(x)
-        if self.channel_kernel_size is not None:
+            x = self.proj(x)
             x = x.permute(
                 0, 3, 2, 1
             )  # (batch_size, embed_dim, time, channel_patches) -> (batch_size, channel_patches, time, embed_dim)
+        else:
+            x = self.proj(x)
         return x
 
 

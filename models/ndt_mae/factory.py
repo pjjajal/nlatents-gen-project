@@ -13,4 +13,7 @@ def mae_factory(encoder_conf: EncoderConfig, decoder_conf: DecoderConfig):
     return model
 
 if __name__ == "__main__":
-    print(mae_factory(EncoderConfig(channels=137), decoder_conf=DecoderConfig()))
+    mae = mae_factory(EncoderConfig(channels=137), decoder_conf=DecoderConfig())
+    import torch
+    x = torch.randn(1, 140, 137)
+    mae(x)

@@ -74,6 +74,7 @@ eval_spikes_heldin = eval_dict['eval_spikes_heldin']
 tlen = train_spikes_heldin.shape[1]
 num_heldin = train_spikes_heldin.shape[2]
 num_heldout = train_spikes_heldout.shape[2]
+print(eval_spikes_heldin.shape)
 
 # ---- Define helpers ---- #
 def fit_poisson(train_factors_s, eval_factors_s, train_spikes_s, eval_spikes_s=None, alpha=0.0):
@@ -123,6 +124,7 @@ eval_lograte_heldin_s = np.log(eval_spksmth_heldin_s + log_offset)
 train_spksmth_heldout_s, eval_spksmth_heldout_s = fit_poisson(train_lograte_heldin_s, eval_lograte_heldin_s, train_spikes_heldout_s, alpha=alpha)
 train_spksmth_heldout = train_spksmth_heldout_s.reshape((-1, tlen, num_heldout))
 eval_spksmth_heldout = eval_spksmth_heldout_s.reshape((-1, tlen, num_heldout))
+print(eval_spksmth_heldout.shape)
 
 # OPTIONAL: Also use smoothed spikes + GLM for held-in rate predictions
 # train_spksmth_heldin_s, eval_spksmth_heldin_s = fit_poisson(train_lograte_heldin_s, eval_lograte_heldin_s, train_spikes_heldin_s, eval_spikes_heldin_s, alpha=alpha)

@@ -73,11 +73,26 @@ class Decoder(nn.Module):
         x = self.embed(x)
 
         # append mask tokens to sequence
-        mask_tokens = self.mask_token.repeat(x.shape[0], ids_restore.shape[1] + 1 - x.shape[1], 1)
-        x = torch.cat([x, mask_tokens], dim=1) 
-        x = torch.gather(x, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, x.shape[2]))  # unshuffle
+        if ids_restore is not None:
+            num_mask_tokens = ids_restore.shape[1] + 1 - x.shape[1]
+            mask_tokens = self.mask_token.repeat(x.shape[0], num_mask_tokens, 1)
+            x = torch.cat([x, mask_tokens], dim=1) 
+            x = torch.gather(x, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, x.shape[2]))  # unshuffle
 
         for block in self.blocks:
             x = block(x)
         x = self.norm(x)
         return x
+
+
+class HeldoutDecoder(Decoder):
+    def forward(self, x, ids_restore):
+        x = self.embed(x)
+
+        mask_tokens = self.mask_token.repeat(x.shape[0], 1, 1)
+        x = torch.cat([x, mask_tokens], dim=1) 
+        for block in self.blocks:
+            x = block(x)
+        x = self.norm(x)
+        # print(x.shape, mask_tokens.shape, x[:, mask_tokens.shape[1]:, :].shape)
+        return x[:, mask_tokens.shape[1]:, :]
