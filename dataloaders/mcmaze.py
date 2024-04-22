@@ -24,7 +24,7 @@ class McMazeDataset(Dataset):
 
     def __getitem__(self, idx):
         if self.split == "eval":
-            return self.eval_spikes_heldin[idx], self.eval_spikes_heldout[idx]
+            return self.train_behavior[idx], self.eval_spikes_heldin[idx], self.eval_spikes_heldout[idx]
         return (self.train_behavior[idx], self.train_spikes_heldin[idx], self.train_spikes_heldout[idx])
     
 
