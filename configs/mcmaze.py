@@ -27,6 +27,7 @@ class McMazeConfigCLIPesque:
     num_channels: int = 137
     num_heldout_channels: int = 45
     mask_ratio: float = 0.40
+    mask_ratio_cross: float = 0.40
     pretrain: bool = False
     entire: bool = True
 
@@ -49,15 +50,21 @@ TRAIN_CONFIGS = {
         learning_rate=7.5e-2,
     ),
     "mcmaze_ssl_pt": McMazeConfigCLIPesque(
-        mask_ratio=0.0,
-        batch_size=256,
-        learning_rate=1e-2,
+        mask_ratio=0.50,
+        mask_ratio_cross=0.40,
+        batch_size=512,
+        learning_rate=3e-2,
         weight_decay=5e-2,
         num_epochs=750,
     ),
     "mcmaze_ssl": McMazeConfigCLIPesque(
         mask_ratio=0.00,
-        batch_size=128,
-        learning_rate=7.5e-2,
+        batch_size=32,
+        learning_rate=3.5e-3,
+    ),
+    "mcmaze_ssl_rnn": McMazeConfigCLIPesque(
+        mask_ratio=0.00,
+        batch_size=32,
+        learning_rate=7.5e-3,
     ),
 }

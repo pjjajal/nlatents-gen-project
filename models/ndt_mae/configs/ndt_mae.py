@@ -28,8 +28,8 @@ class DecoderConfig:
     qkv_bias: bool = True
     ffn_bias: bool = True
     proj_bias: bool = True
-    proj_drop: float = 0.20
-    attn_drop: float = 0.20
+    proj_drop: float = 0.25
+    attn_drop: float = 0.25
     init_values: float = 0.1
 
 
@@ -37,8 +37,8 @@ CONFIGS = {
     "mcmaze_supervised": (EncoderConfig(channels=137), DecoderConfig()),
     "mcmaze_supervised_behav": (EncoderConfig(channels=2), DecoderConfig()),
     "mcmaze_ssl": (
-        EncoderConfig(channels=137, embed_dim=128),
-        EncoderConfig(channels=2, embed_dim=128),
-        DecoderConfig(input_dim=128, embed_dim=32),
+        EncoderConfig(channels=137, embed_dim=128, depth=8, num_heads=16),
+        EncoderConfig(channels=2, embed_dim=128, depth=8, num_heads=16),
+        DecoderConfig(input_dim=256, embed_dim=64),
     ),
 }

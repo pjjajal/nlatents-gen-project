@@ -38,9 +38,11 @@ class LightningNdtMae(L.LightningModule):
         decoder_conf: DecoderConfig,
         config: McMazeConfig | McMazeConfigCLIPesque,
         behaviour: bool = False,
+        rnn: bool = False,
     ):
         super().__init__()
         self.behaviour = behaviour
+        self.rnn = rnn
 
         spike_encoder_conf = OmegaConf.structured(spike_encoder_conf)
         behavior_encoder_conf = OmegaConf.structured(behavior_encoder_conf)
@@ -55,22 +57,48 @@ class LightningNdtMae(L.LightningModule):
         self.behavior_encoder = Encoder(**behavior_encoder_conf)
 
         # Pretraining Stuff
+        # Contrastive Loss
         self.proj_spike = nn.Linear(
             spike_encoder_conf["embed_dim"], decoder_conf["embed_dim"]
         )
         self.proj_behavior = nn.Linear(
             behavior_encoder_conf["embed_dim"], decoder_conf["embed_dim"]
         )
+        self.proj_spike_heldout = nn.Linear(
+            spike_encoder_conf["embed_dim"], decoder_conf["embed_dim"]
+        )
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
+        self.logit_scale_heldout = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
+        self.logit_scale_heldin = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
         # Fine-tuning Stuff
         # This is the decoder for held-in neurons and predicts the masked time-steps
-        self.forward_decoder = Decoder(**decoder_conf)
+        if rnn:
+            self.forward_decoder = nn.LSTM(
+                input_size=decoder_conf.input_dim,
+                hidden_size=decoder_conf.embed_dim,
+                num_layers=6,
+                batch_first=True,
+                dropout=0.2,
+            )
+        else:
+            self.forward_decoder = Decoder(**decoder_conf)
         # This is the decoder for held-out neurons and predicts held out neurons at
         # the unmasked time-steps
-        self.held_out_decoder = Decoder(**decoder_conf)
+        if rnn:
+            self.held_out_decoder = nn.LSTM(
+                input_size=decoder_conf.input_dim,
+                hidden_size=decoder_conf.embed_dim,
+                num_layers=6,
+                batch_first=True,
+                dropout=0.2,
+            )
+        else:
+            self.held_out_decoder = Decoder(**decoder_conf)
 
         # This is the projection layer for the forward decoder
+        self.norm = nn.LayerNorm(decoder_conf["embed_dim"])
+        self.norm_heldout = nn.LayerNorm(decoder_conf["embed_dim"])
         self.proj = nn.Linear(decoder_conf["embed_dim"], config.num_channels)
         self.proj_heldout = nn.Linear(
             decoder_conf["embed_dim"], config.num_heldout_channels
@@ -96,11 +124,15 @@ class LightningNdtMae(L.LightningModule):
                 latents, mask, ids_restore, ids_keep = self.spike_encoder.forward(
                     train_spikes_heldin, mask_ratio
                 )
-            pred_heldin = self.forward_decoder.forward(latents, ids_restore)
-            pred_heldout = self.held_out_decoder.forward(latents, ids_restore)
+            if self.rnn:
+                pred_heldin, _ = self.forward_decoder.forward(latents)
+                pred_heldout, _ = self.held_out_decoder.forward(latents)
+            else:
+                pred_heldin = self.forward_decoder.forward(latents, ids_restore)
+                pred_heldout = self.held_out_decoder.forward(latents, ids_restore)
 
-            pred_heldin = self.proj(pred_heldin)
-            pred_heldout = self.proj_heldout(pred_heldout)
+            pred_heldin = self.proj(self.norm(pred_heldin))
+            pred_heldout = self.proj_heldout(self.norm_heldout(pred_heldout))
 
             loss_heldin = self.classifier(pred_heldin, train_spikes_heldin)
             loss_heldin = loss_heldin.mean()
@@ -118,27 +150,28 @@ class LightningNdtMae(L.LightningModule):
             return loss
         else:
             pred_spike, mask, ids_restore, ids_keep = self.spike_encoder.forward(
-                train_spikes_heldin, mask_ratio
+                train_spikes_heldin, self.config.mask_ratio_cross
             )
             pred_behavior, mask, ids_restore, ids_keep = self.behavior_encoder.forward(
-                train_behavior, mask_ratio
+                train_behavior, self.config.mask_ratio_cross
             )
 
-            pred_spike = pred_spike.mean(dim=1)
-            pred_behavior = pred_behavior.mean(dim=1)
+            # Contrastive Loss -- Behaviour to Spike
+            pred_spike_clip = pred_spike.mean(dim=1)
+            pred_behavior_clip = pred_behavior.mean(dim=1)
 
-            pred_spike = self.proj_spike(pred_spike)
-            pred_behavior = self.proj_behavior(pred_behavior)
+            pred_spike_clip = self.proj_spike(pred_spike_clip)
+            pred_behavior_clip = self.proj_behavior(pred_behavior_clip)
 
             # normalized features
-            pred_spike = F.normalize(pred_spike, dim=-1)
-            pred_behavior = F.normalize(pred_behavior, dim=-1)
+            pred_spike_clip = F.normalize(pred_spike_clip, dim=-1)
+            pred_behavior_clip = F.normalize(pred_behavior_clip, dim=-1)
 
             # cosine similarity as logits
             logit_scale = self.logit_scale.exp()
-            logits_per_spike = pred_spike @ pred_behavior.T
+            logits_per_spike = pred_spike_clip @ pred_behavior_clip.T
             logits_per_behaviour = logits_per_spike.T
-            
+
             logits_per_spike = logits_per_spike * logit_scale
             logits_per_behaviour = logits_per_behaviour * logit_scale
 
@@ -147,14 +180,65 @@ class LightningNdtMae(L.LightningModule):
                 device=logits_per_spike.device,
                 dtype=torch.long,
             )
-            loss = (
+            contrastive_loss = (
                 F.cross_entropy(logits_per_spike, labels)
                 + F.cross_entropy(logits_per_behaviour, labels)
             ) / 2
 
+            # Spike Contrative Loss
+            pred_spike_1, mask, ids_restore, ids_keep = self.spike_encoder.forward(
+                train_spikes_heldin, mask_ratio
+            )
+            pred_spike_2, mask, ids_restore, ids_keep = self.spike_encoder.forward(
+                train_spikes_heldin, mask_ratio
+            )
+
+            pred_spike_1 = pred_spike_1.mean(dim=1)
+            pred_spike_2 = pred_spike_2.mean(dim=1)
+
+            pred_spike_1 = self.proj_spike(pred_spike_1)
+            pred_spike_2 = self.proj_spike(pred_spike_2)
+
+            # normalized features
+            pred_spike_1 = F.normalize(pred_spike_1, dim=-1)
+            pred_spike_2 = F.normalize(pred_spike_2, dim=-1)
+
+            # cosine similarity as logits
+            logit_scale = self.logit_scale_heldin.exp()
+            logits_per_spike_1 = pred_spike_1 @ pred_spike_2.T
+            logits_per_spike_2 = logits_per_spike_1.T
+
+            logits_per_spike_1 = logits_per_spike_1 * logit_scale
+            logits_per_spike_2 = logits_per_spike_2 * logit_scale
+
+            labels = torch.arange(
+                logits_per_spike_1.shape[0],
+                device=logits_per_spike_1.device,
+                dtype=torch.long,
+            )
+            contrastive_loss_spike = (
+                F.cross_entropy(logits_per_spike_1, labels)
+                + F.cross_entropy(logits_per_spike_2, labels)
+            ) / 2
+
+            loss = contrastive_loss + contrastive_loss_spike
             self.current_loss = loss
 
             self.log("pretrain_loss", loss, on_epoch=True, prog_bar=True, on_step=False)
+            self.log(
+                "contrastive_loss",
+                contrastive_loss,
+                on_epoch=True,
+                prog_bar=True,
+                on_step=False,
+            )
+            self.log(
+                "contrastive_loss_spike",
+                contrastive_loss_spike,
+                on_epoch=True,
+                prog_bar=True,
+                on_step=False,
+            )
             return loss
 
     def on_train_epoch_end(self) -> None:
@@ -169,7 +253,7 @@ class LightningNdtMae(L.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         eval_behavior, eval_spikes_heldin, eval_spikes_heldout = batch
-        
+
         if self.behaviour:
             latents, mask, ids_restore, ids_keep = self.behavior_encoder.forward(
                 eval_behavior, 0
@@ -179,11 +263,15 @@ class LightningNdtMae(L.LightningModule):
                 eval_spikes_heldin, 0
             )
 
-        pred_heldin = self.forward_decoder.forward(latents, ids_restore)
-        pred_heldout = self.held_out_decoder.forward(latents, ids_restore)
+        if self.rnn:
+            pred_heldin, _ = self.forward_decoder.forward(latents)
+            pred_heldout, _ = self.held_out_decoder.forward(latents)
+        else:
+            pred_heldin = self.forward_decoder.forward(latents, ids_restore)
+            pred_heldout = self.held_out_decoder.forward(latents, ids_restore)
 
-        pred_heldin = self.proj(pred_heldin)
-        pred_heldout = self.proj_heldout(pred_heldout)
+        pred_heldin = self.proj(self.norm(pred_heldin))
+        pred_heldout = self.proj_heldout(self.norm_heldout(pred_heldout))
 
         loss_heldin = self.classifier(pred_heldin, eval_spikes_heldin).mean()
         loss_heldout = self.classifier(pred_heldout, eval_spikes_heldout).mean()
@@ -229,7 +317,10 @@ class LightningNdtMae(L.LightningModule):
             parameters += list(self.behavior_encoder.parameters())
             parameters += list(self.proj_spike.parameters())
             parameters += list(self.proj_behavior.parameters())
+            parameters += list(self.proj_spike_heldout.parameters())
             parameters.append(self.logit_scale)
+            parameters.append(self.logit_scale_heldin)
+            parameters.append(self.logit_scale_heldout)
 
         # Finetuning
         else:
@@ -237,6 +328,8 @@ class LightningNdtMae(L.LightningModule):
             parameters += list(self.held_out_decoder.parameters())
             parameters += list(self.proj.parameters())
             parameters += list(self.proj_heldout.parameters())
+            parameters += list(self.norm.parameters())
+            parameters += list(self.norm_heldout.parameters())
         optimizer = optim.AdamW(
             parameters,
             lr=self.config.learning_rate,
@@ -277,13 +370,23 @@ if __name__ == "__main__":
         default=False,
     )
     parser.add_argument(
+        "--rnn", action="store_true", help="Use RNN decoder of Transformer."
+    )
+    parser.add_argument(
         "--pretrain", action="store_true", help="Pretrain the model.", default=False
     )
     parser.add_argument("--checkpoint", type=str, default=None)
     args = parser.parse_args()
 
-    spike_encoder_conf, behaviour_encoder_conf, decoder_conf = CONFIGS["mcmaze_ssl"]
-    config = TRAIN_CONFIGS["mcmaze_ssl_pt"] if args.pretrain else TRAIN_CONFIGS["mcmaze_ssl"]
+    spike_encoder_conf, behaviour_encoder_conf, decoder_conf = (
+        CONFIGS["mcmaze_ssl"]
+    )
+    if args.pretrain:
+        config = TRAIN_CONFIGS["mcmaze_ssl_pt"]
+    elif args.rnn:
+        config = TRAIN_CONFIGS["mcmaze_ssl_rnn"]
+    else:
+        config = TRAIN_CONFIGS["mcmaze_ssl"]
     config.pretrain = args.pretrain
 
     train_dataset = McMazeDataset("datasets/mcmaze_train_bw5.h5")
@@ -303,11 +406,16 @@ if __name__ == "__main__":
     )
 
     model = LightningNdtMae(
-        spike_encoder_conf, behaviour_encoder_conf, decoder_conf, config, args.behaviour
+        spike_encoder_conf,
+        behaviour_encoder_conf,
+        decoder_conf,
+        config,
+        args.behaviour,
+        args.rnn,
     )
 
     if args.checkpoint is not None:
-        model.load_state_dict(torch.load(args.checkpoint))
+        model.load_state_dict(torch.load(args.checkpoint), strict=False)
 
     lr_monitor = LearningRateMonitor(logging_interval="step")
     trainer = L.Trainer(
