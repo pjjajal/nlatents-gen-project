@@ -75,26 +75,48 @@ class LightningNdtMae(L.LightningModule):
         # This is the decoder for held-in neurons and predicts the masked time-steps
         if rnn:
             self.forward_decoder = nn.LSTM(
-                input_size=decoder_conf.input_dim,
+                input_size=(
+                    behavior_encoder_conf.embed_dim
+                    if behaviour
+                    else spike_encoder_conf.embed_dim
+                ),
                 hidden_size=decoder_conf.embed_dim,
                 num_layers=6,
                 batch_first=True,
                 dropout=0.2,
             )
         else:
-            self.forward_decoder = Decoder(**decoder_conf)
+            self.forward_decoder = Decoder(
+                input_dim=(
+                    behavior_encoder_conf.embed_dim
+                    if behaviour
+                    else spike_encoder_conf.embed_dim
+                ),
+                **decoder_conf,
+            )
         # This is the decoder for held-out neurons and predicts held out neurons at
         # the unmasked time-steps
         if rnn:
             self.held_out_decoder = nn.LSTM(
-                input_size=decoder_conf.input_dim,
+                input_size=(
+                    behavior_encoder_conf.embed_dim
+                    if behaviour
+                    else spike_encoder_conf.embed_dim
+                ),
                 hidden_size=decoder_conf.embed_dim,
                 num_layers=6,
                 batch_first=True,
                 dropout=0.2,
             )
         else:
-            self.held_out_decoder = Decoder(**decoder_conf)
+            self.held_out_decoder = Decoder(
+                input_dim=(
+                    behavior_encoder_conf.embed_dim
+                    if behaviour
+                    else spike_encoder_conf.embed_dim
+                ),
+                **decoder_conf,
+            )
 
         # This is the projection layer for the forward decoder
         self.norm = nn.LayerNorm(decoder_conf["embed_dim"])
@@ -378,9 +400,7 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint", type=str, default=None)
     args = parser.parse_args()
 
-    spike_encoder_conf, behaviour_encoder_conf, decoder_conf = (
-        CONFIGS["mcmaze_ssl"]
-    )
+    spike_encoder_conf, behaviour_encoder_conf, decoder_conf = CONFIGS["mcmaze_ssl"]
     if args.pretrain:
         config = TRAIN_CONFIGS["mcmaze_ssl_pt"]
     elif args.rnn:

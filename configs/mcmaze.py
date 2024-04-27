@@ -50,21 +50,21 @@ TRAIN_CONFIGS = {
         learning_rate=7.5e-2,
     ),
     "mcmaze_ssl_pt": McMazeConfigCLIPesque(
-        mask_ratio=0.50,
+        mask_ratio=0.40,
         mask_ratio_cross=0.40,
-        batch_size=512,
+        batch_size=256,
         learning_rate=3e-2,
         weight_decay=5e-2,
-        num_epochs=750,
+        num_epochs=500,
     ),
     "mcmaze_ssl": McMazeConfigCLIPesque(
-        mask_ratio=0.00,
+        mask_ratio=0.30,
         batch_size=32,
-        learning_rate=3.5e-3,
+        learning_rate=2.5e-2,
     ),
     "mcmaze_ssl_rnn": McMazeConfigCLIPesque(
         mask_ratio=0.00,
-        batch_size=32,
-        learning_rate=7.5e-3,
+        batch_size=64,
+        learning_rate=5e-3,
     ),
 }
