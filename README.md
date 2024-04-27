@@ -24,6 +24,7 @@ conda install ipykernel # use this if you will be looking at the notebooks.
 - `models`: this folder contains model implementations. 
     - `baselines` contains all baseline models from Neural Latents.
     - `ndt_mae` contains my transformer implementations. This is a mix of publicly available code and code I have written (either for this work or for other works). Publicly available code has the copyright and source at the top of the file (I apologize if I've missed anything).
+- `train.py` and `train_ssl.py` are training scripts at the top level. (They have gotten a bit messy and are need of a refactor.)
 
 ## Downloading Datasets
 Datasets should be downloaded to the `data` folder. The following snippet outlines how to do this:
@@ -49,14 +50,34 @@ python -m datasets.create_datasets --datasets mcmaze --bin_width=5
 
 ## Training Jobs
 
+### How to run supervised training:
+```bash
+python train.py # trains supervised model for predicting spikes
+python train.py --behaviour # trains supervised model for predicting spikes from behaviour
+```
+
+### How to run contrastive training:
+```bash
+python train_ssl.py --pretrain # trains model using contrastive learning
+python train_ssl.py  --checkpoint ${PATH_TO_PRETRAINED_MODEL} # trains head for predicting spikes
+python train_ssl.py  --checkpoint ${PATH_TO_PRETRAINED_MODEL} --behaviour # trains head for predicting spikes from behaviour
+python train_ssl.py  --checkpoint ${PATH_TO_PRETRAINED_MODEL} --rnn # trains head for predicting spikes (uses rnn head).
+python train_ssl.py  --checkpoint ${PATH_TO_PRETRAINED_MODEL} --behaviour --rnn # trains head for predicting spikes from behaviour (uses rnn head)
+```
+
 ## Results
-### MC_Maze Rate Predictions
-| Method                                          | co-bps (higher better) | vel R2 (higher better) |
-| ----------------------------------------------- | ---------------------- | ---------------------- |
-| Smoothing (baseline)                            | 0.2122                 | 0.616                  |
-| NDT (baseline)                                  | 0.3597                 | 0.8897                 |
-| **My Method Spikes --> Spikes (supervised)**    | 0.3179                 | -                      |
-| **My Method Behaviour --> Spikes (supervised)** | 0.3164                 | -                      |
+### MC_Maze
+| Method                                                         | co-bps (higher better) |
+| -------------------------------------------------------------- | ---------------------- |
+| Smoothing (baseline)                                           | 0.2122                 |
+| NDT (baseline)                                                 | 0.3597                 |
+| **My Method Spikes --> Spikes (supervised)**                   | 0.3179                 |
+| **My Method Behaviour --> Spikes (supervised)**                | 0.3164                 |
+| **My Method Spikes --> Spikes (contrastive, xformer head)**    |                  0.2936|
+| **My Method Behaviour --> Spikes (contrastive, xformer head)** |                    0.3139|
+| **My Method Spikes --> Spikes (contrastive, rnn head)**     |                    0.1140|
+| **My Method Behaviour --> Spikes (contrastive, rnn head)**     |                    0.2635|
+
 
 *Note 1: My architecture is similar to NDT. They use hyperparameter search, this helps get better performance. I did not have time to do this but there is historical precedent that this may help.*
 
